@@ -1,9 +1,13 @@
-FROM amazonlinux:2
+FROM amazonlinux:2018.03
 
 SHELL ["/bin/bash", "-c"]
 
 ENV BUILD_DIR="/tmp/build"
 ENV INSTALL_DIR="/opt"
+
+# Lock To Proper Release
+
+RUN sed -i 's/releasever=latest/releaserver=2018.03/' /etc/yum.conf
 
 # Create All The Necessary Build Directories
 
@@ -24,14 +28,14 @@ WORKDIR /tmp
 RUN set -xe \
     && yum makecache \
     && yum groupinstall -y "Development Tools"  --setopt=group_package_types=mandatory,default \
-    && yum install -y python3-devel openssl-devel gcc10 gcc10-c++
+    && yum install -y libuuid-devel openssl-devel gcc72 gcc72-c++
 
 # Install CMake
 
 RUN  set -xe \
     && mkdir -p /tmp/cmake \
     && cd /tmp/cmake \
-    && curl -Ls  https://cmake.org/files/v3.26/cmake-3.26.4.tar.gz \
+    && curl -Ls  https://github.com/Kitware/CMake/releases/download/v3.26.4/cmake-3.26.4.tar.gz \
     | tar xzC /tmp/cmake --strip-components=1 \
     && sed -i '/"lib64"/s/64//' Modules/GNUInstallDirs.cmake \
     && ./bootstrap \
@@ -42,49 +46,12 @@ RUN  set -xe \
     && make \
     && make install
 
-# Install GObject Introspection
+# Install NASM
 
 RUN  set -xe \
-    && mkdir -p /tmp/gobject-introspection \
-    && cd /tmp/gobject-introspection \
-    && curl -Ls  https://download.gnome.org/sources/gobject-introspection/1.76/gobject-introspection-1.76.1.tar.xz \
-    | tar xJvC /tmp/gobject-introspection --strip-components=1 \
-    && mkdir build \
-    && cd build \
-    && pip3 install ninja meson \
-    && meson setup \
-    --prefix=/usr/local \
-    --buildtype=release \
-    .. \
-    && ninja \
-    && ninja install
-
-# Install Boost (https://github.com/boostorg/boost)
-
-RUN set -xe \
-    && mkdir -p /tmp/boost \
-    && cd /tmp/boost \
-    && curl -Ls https://boostorg.jfrog.io/artifactory/main/release/1.82.0/source/boost_1_82_0.tar.gz \
-    | tar xzC /tmp/boost --strip-components=1 \
-    && sed -i '/#include.*phoenix.*tuple.hpp.*/d' boost/phoenix/stl.hpp \
-    && ./bootstrap.sh \
-    --prefix=/usr/local \
-    --with-python=python3 \
-    && ./b2 stage -j8 \
-    threading=multi \
-    link=shared \
-    && ./b2 install \
-    threading=multi \
-    link=shared
-
-# Install NASM (https://www.nasm.us)
-
-ENV VERSION_NASM=2.16.01
-
-RUN set -xe \
     && mkdir -p /tmp/nasm \
     && cd /tmp/nasm \
-    && curl -Ls  https://www.nasm.us/pub/nasm/releasebuilds/${VERSION_NASM}/nasm-${VERSION_NASM}.tar.xz \
+    && curl -Ls  http://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.xz \
     | tar xJvC /tmp/nasm --strip-components=1 \
     && ./configure --prefix=/usr/local \
     && make \
@@ -100,7 +67,7 @@ ENV LD_LIBRARY_PATH="${INSTALL_DIR}/lib64:${INSTALL_DIR}/lib"
 
 # Build LibXML2 (https://github.com/GNOME/libxml2/releases)
 
-ENV VERSION_XML2=2.9.12
+ENV VERSION_XML2=2.9.10
 ENV XML2_BUILD_DIR=${BUILD_DIR}/xml2
 
 RUN set -xe; \
@@ -112,8 +79,6 @@ WORKDIR  ${XML2_BUILD_DIR}/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure \
@@ -134,7 +99,7 @@ RUN set -xe; \
 
 # Install FreeType2 (https://github.com/aseprite/freetype2/releases)
 
-ENV VERSION_FREETYPE2=2.13.0
+ENV VERSION_FREETYPE2=2.10.1
 ENV FREETYPE2_BUILD_DIR=${BUILD_DIR}/freetype2
 
 RUN set -xe; \
@@ -153,8 +118,6 @@ RUN set -xe; \
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure  \
@@ -179,8 +142,6 @@ WORKDIR  ${GPERF_BUILD_DIR}/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure  \
@@ -190,7 +151,7 @@ RUN set -xe; \
 
 # Install Fontconfig (https://github.com/freedesktop/fontconfig/releases)
 
-ENV VERSION_FONTCONFIG=2.14.2
+ENV VERSION_FONTCONFIG=2.13.92
 ENV FONTCONFIG_BUILD_DIR=${BUILD_DIR}/fontconfig
 
 RUN set -xe; \
@@ -205,8 +166,6 @@ RUN set -xe; \
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     FONTCONFIG_PATH=${INSTALL_DIR} \
@@ -221,7 +180,7 @@ RUN set -xe; \
 
 # Install Libjpeg-Turbo (https://github.com/libjpeg-turbo/libjpeg-turbo/releases)
 
-ENV VERSION_LIBJPEG=2.1.5.1
+ENV VERSION_LIBJPEG=2.1.5
 ENV LIBJPEG_BUILD_DIR=${BUILD_DIR}/libjpeg
 
 RUN set -xe; \
@@ -233,8 +192,6 @@ WORKDIR  ${LIBJPEG_BUILD_DIR}/bin/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     cmake .. \
@@ -253,15 +210,13 @@ ENV OPENJPEG2_BUILD_DIR=${BUILD_DIR}/openjpeg2
 
 RUN set -xe; \
     mkdir -p ${OPENJPEG2_BUILD_DIR}/bin; \
-    curl -Ls https://github.com/uclouvain/openjpeg/archive/refs/tags/v${VERSION_OPENJPEG2}.tar.gz \
+    curl -Ls https://github.com/uclouvain/openjpeg/archive/v${VERSION_OPENJPEG2}/openjpeg-${VERSION_OPENJPEG2}.tar.gz \
     | tar xzC ${OPENJPEG2_BUILD_DIR} --strip-components=1
 
 WORKDIR  ${OPENJPEG2_BUILD_DIR}/bin/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     cmake .. \
@@ -274,20 +229,18 @@ RUN set -xe; \
 
 # Install Libpng (https://github.com/glennrp/libpng/releases)
 
-ENV VERSION_LIBPNG=1.6.39
-ENV LIBPNG_BUILD_DIR=${BUILD_DIR}/libpng
+ENV VERSION_OPENPNG=1.6.39
+ENV OPENPNG_BUILD_DIR=${BUILD_DIR}/libpng
 
 RUN set -xe; \
-    mkdir -p ${LIBPNG_BUILD_DIR}; \
-    curl -Ls https://downloads.sourceforge.net/libpng/libpng-${VERSION_LIBPNG}.tar.xz \
-    | tar xJvC ${LIBPNG_BUILD_DIR} --strip-components=1
+    mkdir -p ${OPENPNG_BUILD_DIR}; \
+    curl -Ls https://downloads.sourceforge.net/libpng/libpng-${VERSION_OPENPNG}.tar.xz \
+    | tar xJvC ${OPENPNG_BUILD_DIR} --strip-components=1
 
-WORKDIR  ${LIBPNG_BUILD_DIR}/
+WORKDIR  ${OPENPNG_BUILD_DIR}/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure  \
@@ -298,7 +251,7 @@ RUN set -xe; \
 
 # Install LibTIFF (http://download.osgeo.org/libtiff)
 
-ENV VERSION_LIBTIFF=4.5.1
+ENV VERSION_LIBTIFF=4.1.0
 ENV LIBTIFF_BUILD_DIR=${BUILD_DIR}/tiff
 
 RUN set -xe; \
@@ -310,8 +263,6 @@ WORKDIR  ${LIBTIFF_BUILD_DIR}/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure  \
@@ -322,7 +273,7 @@ RUN set -xe; \
 
 # Install Pixman (https://www.cairographics.org/releases)
 
-ENV VERSION_PIXMAN=0.42.2
+ENV VERSION_PIXMAN=0.40.0
 ENV PIXMAN_BUILD_DIR=${BUILD_DIR}/pixman
 
 RUN set -xe; \
@@ -337,8 +288,6 @@ RUN set -xe; \
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure  \
@@ -361,8 +310,6 @@ WORKDIR  ${CAIRO_BUILD_DIR}/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure  \
@@ -374,7 +321,7 @@ RUN set -xe; \
 
 # Install Little CMS (https://downloads.sourceforge.net/lcms)
 
-ENV VERSION_LCMS=2-2.15
+ENV VERSION_LCMS=2-2.11
 ENV LCMS_BUILD_DIR=${BUILD_DIR}/lcms
 
 RUN set -xe; \
@@ -386,8 +333,6 @@ WORKDIR  ${LCMS_BUILD_DIR}/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
     CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
     LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
     ./configure  \
@@ -396,9 +341,42 @@ RUN set -xe; \
     && make \
     && make install
 
+# Install Boost
+# Boost 라이브러리 다운로드 및 설치
+
+RUN yum install -y zlib-devel python-devel bzip2-devel libicu-devel
+
+ENV VERSION_BOOST=1.76.0
+ENV BOOST_BUILD_DIR=${BUILD_DIR}/boost
+
+RUN set -xe; \
+    mkdir ${BOOST_BUILD_DIR} && \
+    curl -Ls https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.gz | \
+    tar xzC ${BOOST_BUILD_DIR} --strip-components=1
+
+WORKDIR ${BOOST_BUILD_DIR}
+
+RUN ./bootstrap.sh --prefix=${INSTALL_DIR} --with-libraries=all && \
+    ./b2 install --prefix=${INSTALL_DIR}
+
+# Install Poppler Data (https://poppler.freedesktop.org/)
+# https://gist.github.com/Dayjo/618794d4ff37bb82ddfb02c63b450a81
+ENV VERSION_POPPLER_DATA=0.4.12
+ENV POPPLER_DATA_BUILD_DIR=${BUILD_DIR}/poppler-data
+
+RUN set -xe; \
+    mkdir -p ${POPPLER_DATA_BUILD_DIR}; \
+    curl -Ls https://poppler.freedesktop.org/poppler-data-${VERSION_POPPLER_DATA}.tar.gz \
+    | tar xzvC ${POPPLER_DATA_BUILD_DIR} --strip-components=1
+
+WORKDIR ${POPPLER_DATA_BUILD_DIR}
+
+RUN set -xe; \
+    make && make prefix=${INSTALL_DIR} install
+
 # Install Poppler (https://gitlab.freedesktop.org/poppler/poppler/-/tags)
 
-ENV VERSION_POPPLER=23.06.0
+ENV VERSION_POPPLER=22.12.0
 ENV POPPLER_BUILD_DIR=${BUILD_DIR}/poppler
 ENV POPPLER_TEST_DIR=${BUILD_DIR}/poppler-test
 
@@ -411,20 +389,24 @@ RUN set -xe; \
     curl -Ls https://poppler.freedesktop.org/poppler-${VERSION_POPPLER}.tar.xz \
     | tar xJvC ${POPPLER_BUILD_DIR} --strip-components=1
 
-WORKDIR ${POPPLER_BUILD_DIR}/bin/
+WORKDIR  ${POPPLER_BUILD_DIR}/bin/
 
 RUN set -xe; \
     CFLAGS="" \
-    CC="/usr/bin/gcc10-gcc" \
-    CXX="/usr/bin/gcc10-c++" \
-    CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include" \
-    LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib" \
+    CPPFLAGS="-I${INSTALL_DIR}/include  -I/usr/include -I/usr/include/boost" \
+    LDFLAGS="-L${INSTALL_DIR}/lib64 -L${INSTALL_DIR}/lib -L/usr/lib" \
     cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
+    -DTESTDATADIR=${POPPLER_TEST_DIR} \
+    -DBUILD_SHARED_LIBS=ON \
+    -DENABLE_UNSTABLE_API_ABI_HEADERS=ON \
+    -DBUILD_GTK_TESTS=OFF \
+    -DBUILD_QT5_TESTS=OFF \
     -DCMAKE_INSTALL_PREFIX=${INSTALL_DIR} \
     -DCMAKE_PREFIX_PATH=${INSTALL_DIR} \
-    -DENABLE_UNSTABLE_API_ABI_HEADERS=ON \
-    -DTESTDATADIR=${POPPLER_TEST_DIR} \
+    -DENABLE_GTK_DOC=OFF \
+    -DENABLE_QT5=OFF \
     && make \
     && make install
 
+WORKDIR  ${POPPLER_BUILD_DIR}/bin/
